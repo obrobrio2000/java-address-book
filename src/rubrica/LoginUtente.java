@@ -48,6 +48,7 @@ public class LoginUtente extends JFrame {
     }
 
     public boolean checkLogin(String username, String password) {
-        return username.equals(System.getProperty("user.name")) && password.equals("admin");
+        String user = System.getProperty("user.name");
+        return username.equals(user) && password.equals(user);
     }
 }

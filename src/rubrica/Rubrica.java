@@ -7,16 +7,24 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Properties;
 import java.util.Scanner;
 
 public class Rubrica extends JFrame {
     private JTable table;
     private DefaultTableModel model;
     private ArrayList<Persona> persone;
+    private Connection connection;
 
     public Rubrica() {
         super("Rubrica");
@@ -26,9 +34,15 @@ public class Rubrica extends JFrame {
 
         persone = new ArrayList<>();
         loadFromFile();
+        connectToDatabase();
 
         model = new DefaultTableModel(new String[] { "Nome", "Cognome", "Telefono" }, 0);
-        table = new JTable(model);
+        table = new JTable(model) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
         JScrollPane scrollPane = new JScrollPane(table);
         add(scrollPane, BorderLayout.CENTER);
 
@@ -49,6 +63,7 @@ public class Rubrica extends JFrame {
                     persone.add(p);
                     model.addRow(new Object[] { p.getNome(), p.getCognome(), p.getTelefono() });
                     saveToFile(p);
+                    saveToDatabase(p);
                 }
             }
         });
@@ -63,13 +78,18 @@ public class Rubrica extends JFrame {
                 int index = table.getSelectedRow();
                 if (index >= 0) {
                     Persona p = persone.get(index);
+                    Persona pOld = new Persona(p.getNome(), p.getCognome(), p.getIndirizzo(), p.getTelefono(),
+                            p.getEta());
                     EditorPersona dialog = new EditorPersona(Rubrica.this, p);
                     dialog.setVisible(true);
                     if (dialog.isOk()) {
+                        deleteFile(pOld);
+                        deleteFromDatabase(pOld);
                         model.setValueAt(p.getNome(), index, 0);
                         model.setValueAt(p.getCognome(), index, 1);
                         model.setValueAt(p.getTelefono(), index, 2);
                         saveToFile(p);
+                        saveToDatabase(p);
                     }
                 } else {
                     JOptionPane.showMessageDialog(Rubrica.this,
@@ -96,6 +116,7 @@ public class Rubrica extends JFrame {
                         persone.remove(index);
                         model.removeRow(index);
                         deleteFile(p);
+                        deleteFromDatabase(p);
                     }
                 } else {
                     JOptionPane.showMessageDialog(Rubrica.this,
@@ -162,6 +183,50 @@ public class Rubrica extends JFrame {
         }
     }
 
+    private void connectToDatabase() {
+        try {
+            Properties prop = new Properties();
+            prop.load(new FileInputStream("credenziali_database.properties"));
+            String driver = prop.getProperty("db.driver");
+            String url = prop.getProperty("db.url");
+            String user = prop.getProperty("db.username");
+            String pass = prop.getProperty("db.password");
+            Class.forName(driver);
+            connection = DriverManager.getConnection(url, user, pass);
+        } catch (ClassNotFoundException | SQLException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void saveToDatabase(Persona p) {
+        try {
+            String query = "INSERT INTO persone (nome, cognome, indirizzo, telefono, eta, id) VALUES (?, ?, ?, ?, ?, ?)";
+            PreparedStatement statement = connection.prepareStatement(query);
+            statement.setString(1, p.getNome());
+            statement.setString(2, p.getCognome());
+            statement.setString(3, p.getIndirizzo());
+            statement.setString(4, p.getTelefono());
+            statement.setInt(5, p.getEta());
+            statement.setInt(6, shortHashCode(p.getTelefono()));
+            statement.executeUpdate();
+            statement.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void deleteFromDatabase(Persona p) {
+        try {
+            String query = "DELETE FROM persone WHERE id = ?";
+            PreparedStatement statement = connection.prepareStatement(query);
+            statement.setInt(1, shortHashCode(p.getTelefono()));
+            statement.executeUpdate();
+            statement.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     static short shortHashCode(String str) {
         int strHashCode = str.hashCode();
         short shorterHashCode = (short) (strHashCode % Short.MAX_VALUE);
@@ -169,7 +234,6 @@ public class Rubrica extends JFrame {
     }
 
     public static void main(String[] args) {
-        LoginUtente login_utente = new LoginUtente();
-        login_utente.setVisible(true);
+        new LoginUtente().setVisible(true);
     }
 }
